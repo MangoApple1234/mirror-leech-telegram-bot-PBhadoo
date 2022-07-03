@@ -19,15 +19,13 @@ class MyLogger:
 
     def debug(self, msg):
         # Hack to fix changing extension
-        if not self.obj.is_playlist:
-            match = re_search(r'.Merger..Merging formats into..(.*?).$', msg) # To mkv
-            if not match:
-                match = re_search(r'.ExtractAudio..Destination..(.*?)$', msg) # To mp3
-            if match:
-                LOGGER.info(msg)
-                newname = match.group(1)
-                newname = newname.rsplit("/", 1)[-1]
-                self.obj.name = newname
+        match = re_search(r'.Merger..Merging formats into..(.*?).$', msg) # To mkv
+        if not match and not self.obj.is_playlist:
+            match = re_search(r'.ExtractAudio..Destination..(.*?)$', msg) # To mp3
+        if match and not self.obj.is_playlist:
+            newname = match.group(1)
+            newname = newname.split("/")[-1]
+            self.obj.name = newname
 
     @staticmethod
     def warning(msg):
@@ -57,12 +55,9 @@ class YoutubeDLHelper:
         self.opts = {'progress_hooks': [self.__onDownloadProgress],
                      'logger': MyLogger(self),
                      'usenetrc': True,
+                     'embedsubtitles': True,
                      'prefer_ffmpeg': True,
-                     'cookiefile': 'cookies.txt',
-                     'allow_multiple_video_streams': True,
-                     'allow_multiple_audio_streams': True,
-                     'trim_file_name': 200,
-                     'extract_flat': 'in_palylist'}
+                     'cookiefile': 'cookies.txt'}
 
     @property
     def download_speed(self):
@@ -127,18 +122,19 @@ class YoutubeDLHelper:
                 return self.__onDownloadError(str(e))
         if 'entries' in result:
             for v in result['entries']:
-                if 'filesize_approx' in v:
+                try:
                     self.size += v['filesize_approx']
-                elif 'filesize' in v:
-                    self.size += v['filesize']
+                except:
+                    pass
+            self.is_playlist = True
             if name == "":
-                self.name = realName.split(f" [{result['id'].replace('*', '_')}]")[0]
+                self.name = str(realName).split(f" [{result['id'].replace('*', '_')}]")[0]
             else:
                 self.name = name
         else:
             ext = realName.split('.')[-1]
             if name == "":
-                newname = realName.split(f" [{result['id'].replace('*', '_')}]")
+                newname = str(realName).split(f" [{result['id'].replace('*', '_')}]")
                 if len(newname) > 1:
                     self.name = newname[0] + '.' + ext
                 else:
@@ -164,7 +160,6 @@ class YoutubeDLHelper:
     def add_download(self, link, path, name, qual, playlist, args):
         if playlist:
             self.opts['ignoreerrors'] = True
-            self.is_playlist = True
         self.__gid = ''.join(SystemRandom().choices(ascii_letters + digits, k=10))
         self.__onDownloadStart()
         if qual.startswith('ba/b'):
@@ -181,12 +176,7 @@ class YoutubeDLHelper:
         if self.__is_cancelled:
             return
         if not self.is_playlist:
-            if args is None:
-                self.opts['outtmpl'] = f"{path}/{self.name}"
-            else:
-                folder_name = self.name.rsplit('.', 1)[0]
-                self.opts['outtmpl'] = f"{path}/{folder_name}/{self.name}"
-                self.name = folder_name
+            self.opts['outtmpl'] = f"{path}/{self.name}"
         else:
             self.opts['outtmpl'] = f"{path}/{self.name}/%(title)s.%(ext)s"
         self.__download(link)
